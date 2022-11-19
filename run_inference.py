@@ -24,7 +24,7 @@ parser.add_argument("--dataset-list", default=None, type=str, help="Dataset list
 parser.add_argument("--dataset-dir", default='.', type=str, help="Dataset directory")
 parser.add_argument("--output-dir", default='output', type=str, help="Output directory")
 
-parser.add_argument("--img-exts", default=['png', 'jpg', 'bmp'], nargs='*', type=str, help="images extensions to glob")
+parser.add_argument("--img-exts", default=['png', 'jpg', 'JPEG', 'bmp'], nargs='*', type=str, help="images extensions to glob")
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 

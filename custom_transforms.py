@@ -58,6 +58,12 @@ class RandomHorizontalFlip(object):
             output_intrinsics = intrinsics
         return output_images, output_intrinsics
 
+class Resize(object):
+    def __call__(self, images, intrinsics):
+        scaled_h, scaled_w = 384, 384
+        scaled_images = [resize(im, (scaled_h, scaled_w)) for im in images]
+        return scaled_images, intrinsics
+
 
 class RandomScaleCrop(object):
     """Randomly zooms images up to 15% and crop them to keep same size as before."""

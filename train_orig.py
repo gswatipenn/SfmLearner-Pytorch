@@ -16,7 +16,6 @@ from loss_functions import compute_depth_errors, compute_pose_errors
 from inverse_warp import pose_vec2mat
 from logger import TermLogger, AverageMeter
 from tensorboardX import SummaryWriter
-import torchvision
 
 parser = argparse.ArgumentParser(description='Structure from Motion Learner training on KITTI and CityScapes Dataset',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -75,8 +74,6 @@ parser.add_argument('-f', '--training-output-freq', type=int,
                     help='frequence for outputting dispnet outputs and warped imgs at training for all scales. '
                          'if 0, will not output',
                     metavar='N', default=0)
-parser.add_argument('--disp-transformer', action='store_true', help='use DPT Transformer network for depthnet')
-parser.add_argument('--optimize', action='store_true', help='optimise through half precision')
 
 best_error = -1
 n_iter = 0
@@ -103,8 +100,6 @@ def main():
     normalize = custom_transforms.Normalize(mean=[0.5, 0.5, 0.5],
                                             std=[0.5, 0.5, 0.5])
     train_transform = custom_transforms.Compose([
-        # torchvision.transforms.Resize((1216, 352)),
-        custom_transforms.Resize(),
         custom_transforms.RandomHorizontalFlip(),
         custom_transforms.RandomScaleCrop(),
         custom_transforms.ArrayToTensor(),
@@ -159,30 +154,10 @@ def main():
     # create model
     print("=> creating model")
 
-    if args.disp_transformer:
-        print ("Using Transformer DPT for depth net")
-        from dpt.models import DPTDepthModel
-        disp_net = DPTDepthModel(
-            path=args.pretrained_disp,
-            scale=0.00006016,
-            shift=0.00579,
-            invert=True,
-            backbone="vitb_rn50_384",
-            non_negative=True,
-            enable_attention_hooks=False,
-        ).to(device)
-
-    else:
-        disp_net = models.DispNetS().to(device)
-
-    if args.optimize == True and device == torch.device("cuda"):
-        disp_net = disp_net.to(memory_format=torch.channels_last)
-        disp_net = disp_net.half()
-
+    disp_net = models.DispNetS().to(device)
     output_exp = args.mask_loss_weight > 0
     if not output_exp:
         print("=> no mask loss, PoseExpnet will only output pose")
-        
     pose_exp_net = models.PoseExpNet(nb_ref_imgs=args.sequence_length - 1, output_exp=args.mask_loss_weight > 0).to(device)
 
     if args.pretrained_exp_pose:
@@ -192,13 +167,12 @@ def main():
     else:
         pose_exp_net.init_weights()
 
-    if not args.disp_transformer:
-        if args.pretrained_disp:
-            print("=> using pre-trained weights for Dispnet")
-            weights = torch.load(args.pretrained_disp)
-            disp_net.load_state_dict(weights['state_dict'])
-        else:
-            disp_net.init_weights()
+    if args.pretrained_disp:
+        print("=> using pre-trained weights for Dispnet")
+        weights = torch.load(args.pretrained_disp)
+        disp_net.load_state_dict(weights['state_dict'])
+    else:
+        disp_net.init_weights()
 
     cudnn.benchmark = True
     disp_net = torch.nn.DataParallel(disp_net)
@@ -225,18 +199,18 @@ def main():
     logger = TermLogger(n_epochs=args.epochs, train_size=min(len(train_loader), args.epoch_size), valid_size=len(val_loader))
     logger.epoch_bar.start()
 
-    # if args.pretrained_disp or args.evaluate:
-    #     logger.reset_valid_bar()
-    #     if args.with_gt and args.with_pose:
-    #         errors, error_names = validate_with_gt_pose(args, val_loader, disp_net, pose_exp_net, 0, logger, tb_writer)
-    #     elif args.with_gt:
-    #         errors, error_names = validate_with_gt(args, val_loader, disp_net, 0, logger, tb_writer)
-    #     else:
-    #         errors, error_names = validate_without_gt(args, val_loader, disp_net, pose_exp_net, 0, logger, tb_writer)
-    #     for error, name in zip(errors, error_names):
-    #         tb_writer.add_scalar(name, error, 0)
-    #     error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names[2:9], errors[2:9]))
-    #     logger.valid_writer.write(' * Avg {}'.format(error_string))
+    if args.pretrained_disp or args.evaluate:
+        logger.reset_valid_bar()
+        if args.with_gt and args.with_pose:
+            errors, error_names = validate_with_gt_pose(args, val_loader, disp_net, pose_exp_net, 0, logger, tb_writer)
+        elif args.with_gt:
+            errors, error_names = validate_with_gt(args, val_loader, disp_net, 0, logger, tb_writer)
+        else:
+            errors, error_names = validate_without_gt(args, val_loader, disp_net, pose_exp_net, 0, logger, tb_writer)
+        for error, name in zip(errors, error_names):
+            tb_writer.add_scalar(name, error, 0)
+        error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names[2:9], errors[2:9]))
+        logger.valid_writer.write(' * Avg {}'.format(error_string))
 
     for epoch in range(args.epochs):
         logger.epoch_bar.update(epoch)
@@ -247,28 +221,27 @@ def main():
         logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
 
         # evaluate on validation set
-        # logger.reset_valid_bar()
-        # if args.with_gt and args.with_pose:
-        #     errors, error_names = validate_with_gt_pose(args, val_loader, disp_net, pose_exp_net, epoch, logger, tb_writer)
-        # elif args.with_gt:
-        #     errors, error_names = validate_with_gt(args, val_loader, disp_net, epoch, logger, tb_writer)
-        # else:
-        #     errors, error_names = validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger, tb_writer)
-        # error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names, errors))
-        # logger.valid_writer.write(' * Avg {}'.format(error_string))
+        logger.reset_valid_bar()
+        if args.with_gt and args.with_pose:
+            errors, error_names = validate_with_gt_pose(args, val_loader, disp_net, pose_exp_net, epoch, logger, tb_writer)
+        elif args.with_gt:
+            errors, error_names = validate_with_gt(args, val_loader, disp_net, epoch, logger, tb_writer)
+        else:
+            errors, error_names = validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger, tb_writer)
+        error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names, errors))
+        logger.valid_writer.write(' * Avg {}'.format(error_string))
 
-        # for error, name in zip(errors, error_names):
-        #     tb_writer.add_scalar(name, error, epoch)
+        for error, name in zip(errors, error_names):
+            tb_writer.add_scalar(name, error, epoch)
 
         # Up to you to chose the most relevant error to measure your model's performance, careful some measures are to maximize (such as a1,a2,a3)
-        # decisive_error = errors[1]
-        # if best_error < 0:
-        #     best_error = decisive_error
+        decisive_error = errors[1]
+        if best_error < 0:
+            best_error = decisive_error
 
-        # # remember lowest error and save checkpoint
-        is_best = True
-        # is_best = decisive_error < best_error
-        # best_error = min(best_error, decisive_error)
+        # remember lowest error and save checkpoint
+        is_best = decisive_error < best_error
+        best_error = min(best_error, decisive_error)
         save_checkpoint(
             args.save_path, {
                 'epoch': epoch + 1,
@@ -281,8 +254,7 @@ def main():
 
         with open(args.save_path/args.log_summary, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
-            # writer.writerow([train_loss, decisive_error])
-            writer.writerow([train_loss])
+            writer.writerow([train_loss, decisive_error])
     logger.epoch_bar.finish()
 
 
@@ -311,27 +283,13 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
         intrinsics = intrinsics.to(device)
 
         # compute output
-        if args.disp_transformer:
-            if args.optimize == True and device == torch.device("cuda"):
-                tgt_img = tgt_img.to(memory_format=torch.channels_last)
-                tgt_img = tgt_img.half()
-                depth = disp_net(tgt_img).unsqueeze(1)
-                depth = depth.float()
-            else:
-                depth = disp_net(tgt_img).unsqueeze(1)
-        else:
-            disparities = disp_net(tgt_img)
-            depth = [1/disp for disp in disparities]
-
+        disparities = disp_net(tgt_img)
+        depth = [1/disp for disp in disparities]
         explainability_mask, pose = pose_exp_net(tgt_img, ref_imgs)
-        if args.disp_transformer:
-            # cnn output is 4d list, just keep first elem for dpt
-            explainability_mask = explainability_mask[0]
 
         loss_1, warped, diff = photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
                                                                depth, explainability_mask, pose,
                                                                args.rotation_mode, args.padding_mode)
-
         if w2 > 0:
             loss_2 = explainability_loss(explainability_mask)
         else:
@@ -403,15 +361,11 @@ def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger,
         intrinsics = intrinsics.to(device)
         intrinsics_inv = intrinsics_inv.to(device)
 
-        if args.disp_transformer:
-            depth = disp_net(tgt_img).unsqueeze(1)
-            disp = 1/depth
-        else:
-            disp = disp_net(tgt_img)
-            depth = 1/disp
-
+        # compute output
+        disp = disp_net(tgt_img)
+        depth = 1/disp
         explainability_mask, pose = pose_exp_net(tgt_img, ref_imgs)
-        # print ("depth shape: ", depth.shape, explainability_mask.shape)
+
         loss_1, warped, diff = photometric_reconstruction_loss(tgt_img, ref_imgs,
                                                                intrinsics, depth,
                                                                explainability_mask, pose,
