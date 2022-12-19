@@ -1,11 +1,11 @@
 # SfMLearner with Transformer Depth Net
-This branch builds on the [master] (https://github.com/gswatipenn/SfmLearner-Pytorch/tree/master) branch and replaces CNN based depth net with DPT transformer network for more accurate depth estimation. For specifics related to the master branch (i.e. original code forked from [ClementPinard/SfmLearner-Pytorch](https://github.com/ClementPinard/SfmLearner-Pytorch)), refer to it's README instead. 
+This [branch](https://github.com/gswatipenn/SfmLearner-Pytorch/tree/transformer_nets) builds on top of the [master](https://github.com/gswatipenn/SfmLearner-Pytorch/tree/master) branch and replaces CNN based depth net with DPT transformer network for more accurate depth estimation. For specifics related to the master branch (i.e. original code forked from [ClementPinard/SfmLearner-Pytorch](https://github.com/ClementPinard/SfmLearner-Pytorch)), refer to it's README instead. 
 This README talks about only the diff from original and additional specs.
 
 Modified Pytorch implementation : Swati Gupta (gswati@seas.upenn.edu), Manasa Sathyan (msathyan@seas.upenn.edu)
 
 ## Preamble
-This codebase was developed and tested with Pytorch 1.13.0, CUDA 11.7 and Debian GNU/Linux 10. Original code was developed in Pytorch 1.0.1, you can access it in the master branch.
+This codebase was developed and tested with Pytorch 1.13.0, CUDA 11.7 and Debian GNU/Linux 10. Original code was developed in Pytorch 1.0.1, you can access it in the [master](https://github.com/gswatipenn/SfmLearner-Pytorch/tree/master) branch.
 
 ## Prerequisite
 
@@ -53,18 +53,18 @@ midair_prepared/
 ```
 
 Here,
-cam.txt inside each trajectory subfolder contains the camera intrinsic matrix for that trajectroy.
-train.txt and val.txt contain the split of train and test trajectories.
+* cam.txt inside each trajectory subfolder contains the camera intrinsic matrix for that trajectroy.
+* train.txt and val.txt contain the split of train and test trajectories.
 
 ### Differences with Original SfmLearner Implementation
 
-* CNN architecture for depth net has been replaced with a [DPT](https://github.com/isl-org/DPT) Style architecture but with following modification:
+* CNN architecture for depth net has been replaced with a [DPT](https://github.com/isl-org/DPT) style architecture but with following key modification:
 The network now outputs 4 different levels of depth maps (coarse to fine) instead of just one final map during training to faciliate better and faster training:
 ![Architecture](CIS680.drawio%20(1).png)
 
 
 ## Training
-Once the data are formatted following the above instructions, you should be able to train the model either in original mode (no transformer) or with modification using the flag --disp-transformer, by running the following command
+Once the data are formatted following the above instructions, you should be able to train the model either in original mode (no transformer) or with modification using the flag `--disp-transformer`, by running the following command
 
 Original command:
 ```bash
@@ -88,7 +88,6 @@ Disparity/Depth map generation and metric evaluation can be done with `run_infer
 ```bash
 python3 run_inference.py --pretrained checkpoints/midair_prepared\,epoch_size3000\,m0.2_cnn_model_bs4/11-19-00\:27/dispnet_checkpoint.pth.tar --dataset-dir /home/jupyter/midair_prepared/ --output-dir midair_trained_inf_epsize3000_freeze --output-depth  --img-width=1024 --img-height=1024 --gt-dataset-dir /home/jupyter/MidAir/Kite_training/sunny/depth/
 ```
-
 
 Pose evaluation is also available using `run_inference_pose.py`
 ```bash
@@ -124,5 +123,3 @@ python3 train.py /path/to/the/formatted/data/ -b4 -m0 -s2.0 --epoch-size 1000 --
 |----|--------------------|
 |ATE | 0.262 (std. 0.006) | 
 |RE  | 0.083 (std. 0.007) |
-
-
