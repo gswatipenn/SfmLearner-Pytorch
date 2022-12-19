@@ -101,11 +101,6 @@ While **ATE** is often said to be enough to trajectory estimation, **RE** seems 
 
 [Avalaible here](https://drive.google.com/drive/folders/1Z8qYcf2U5rDqmCXzpqxwBnAyo2Bt7LcS?usp=sharing)
 
-Arguments used :
-
-```bash
-python3 train.py /path/to/the/formatted/data/ -b4 -m0 -s2.0 --epoch-size 1000 --sequence-length 5 --log-output --with-gt
-```
 
 ### Depth Results on MidAir
 
