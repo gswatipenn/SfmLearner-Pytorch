@@ -3,8 +3,6 @@ This branch builds on master branch and replaces CNN based depth net with DPT tr
 
 Pytorch implementation : Swati Gupta (gswati@seas.upenn.edu), Manasa Sathyan (msathyan@seas.upenn.edu)
 
-![sample_results](misc/cityscapes_sample_results.gif)
-
 ## Preamble
 This codebase was developed and tested with Pytorch 1.13.0, CUDA 11.7 and Debian GNU/Linux 10. Original code was developed in Pytorch 1.0.1, you can access it in the master branch.
 
@@ -33,13 +31,36 @@ path.py
 ### What has been done
 
 * Training has been tested on MidAir Dataset
-* There is a Dataset preparation step to store image sequences in folders, in the following structure:
+* There is a Dataset preparation step to store image sequences in folders prior to training, the data should be in the following structure:
 
+```bash
+midair_prepared/
+  trajectory_0000/
+    - 000000.JPEG
+    - 000001.JPEG
+    .
+    .
+    .
+    - cam.txt
+  trajectory_0001/
+  trajectory_0018/
+  .
+  .
+  .
+  train.txt
+  val.txt
+```
 
-### Differences with official Implementation
+Here,
+cam.txt inside each trajectory subfolder contains the camera intrinsic matrix for that trajectroy.
+train.txt and val.txt contain the split of train and test trajectories.
+
+### Differences with Original SfmLearner Implementation
 
 * CNN architecture for depth net has been replaced with a [DPT](https://github.com/isl-org/DPT) Style architecture but with following modification:
-The network outputs 4 different levels of depth maps (coarse to fine) instead of just one final map during training to faciliate better and faster training. 
+The network now outputs 4 different levels of depth maps (coarse to fine) instead of just one final map during training to faciliate better and faster training:
+![Architecture](CIS680.drawio%20(1).png)
+
 
 ## Training
 Once the data are formatted following the above instructions, you should be able to train the model either in original mode (no transformer) or with modification using the flag --disp-transformer, by running the following command
@@ -95,6 +116,7 @@ python3 train.py /path/to/the/formatted/data/ -b4 -m0 -s2.0 --epoch-size 1000 --
 ### Pose Results on MidAir
 
 3-frames snippets used
+
 |----|--------------------|
 |ATE | 0.262 (std. 0.006) | 
 |RE  | 0.083 (std. 0.007) |
