@@ -99,7 +99,7 @@ While **ATE** is often said to be enough to trajectory estimation, **RE** seems 
 
 ## Pretrained Nets
 
-[Avalaible here](https://drive.google.com/drive/folders/1H1AFqSS8wr_YzwG2xWwAQHTfXN5Moxmx)
+[Avalaible here](https://drive.google.com/drive/folders/1Z8qYcf2U5rDqmCXzpqxwBnAyo2Bt7LcS?usp=sharing)
 
 Arguments used :
 
@@ -117,6 +117,7 @@ python3 train.py /path/to/the/formatted/data/ -b4 -m0 -s2.0 --epoch-size 1000 --
 
 3-frames snippets used
 
+|    |                    |
 |----|--------------------|
 |ATE | 0.262 (std. 0.006) | 
 |RE  | 0.083 (std. 0.007) |
