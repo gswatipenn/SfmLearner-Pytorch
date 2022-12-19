@@ -1,5 +1,5 @@
 # SfMLearner with Transformer Depth Net
-This [branch](https://github.com/gswatipenn/SfmLearner-Pytorch/tree/transformer_nets) builds on top of the [master](https://github.com/gswatipenn/SfmLearner-Pytorch/tree/master) branch and replaces CNN based depth net with DPT transformer network for more accurate depth estimation. For specifics related to the master branch (i.e. original code forked from [ClementPinard/SfmLearner-Pytorch](https://github.com/ClementPinard/SfmLearner-Pytorch)), refer to it's README instead. 
+This [branch](https://github.com/gswatipenn/SfmLearner-Pytorch/tree/transformer_nets) builds on top of the [master](https://github.com/gswatipenn/SfmLearner-Pytorch/tree/master) branch and replaces CNN based Depth-Net with DPT transformer network for more accurate depth estimation. For specifics related to the master branch (i.e. original code forked from [ClementPinard/SfmLearner-Pytorch](https://github.com/ClementPinard/SfmLearner-Pytorch)), refer to it's README instead. 
 This README talks about only the diff from original and additional specs.
 
 Modified Pytorch implementation : Swati Gupta (gswati@seas.upenn.edu), Manasa Sathyan (msathyan@seas.upenn.edu)
@@ -59,7 +59,7 @@ Here,
 ### Differences with Original SfmLearner Implementation
 
 * CNN architecture for depth net has been replaced with a [DPT](https://github.com/isl-org/DPT) style architecture but with following key modification:
-The network now outputs 4 different levels of depth maps (coarse to fine) instead of just one final map during training to faciliate better and faster training:
+The network now outputs 4 different levels of depth maps (coarse to fine) instead of just one final map during training to facilitate better and faster training:
 ![Architecture](CIS680.drawio%20(1).png)
 
 
@@ -81,6 +81,7 @@ You can then start a `tensorboard` session in this folder by
 tensorboard --logdir=checkpoints/
 ```
 and visualize the training progress by opening [https://localhost:6006](https://localhost:6006) on your browser.
+
 
 ## Evaluation
 
