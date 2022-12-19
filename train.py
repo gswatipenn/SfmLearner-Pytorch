@@ -166,7 +166,8 @@ def main():
             path=args.pretrained_disp,
             scale=0.00006016,
             shift=0.00579,
-            invert=True,
+            invert=False,
+            layerwise=True,
             backbone="vitb_rn50_384",
             non_negative=True,
             enable_attention_hooks=False,
@@ -210,7 +211,7 @@ def main():
         {'params': disp_net.parameters(), 'lr': args.lr},
         {'params': pose_exp_net.parameters(), 'lr': args.lr}
     ]
-    optimizer = torch.optim.Adam(optim_params,
+    optimizer = torch.optim.AdamW(optim_params,
                                  betas=(args.momentum, args.beta),
                                  weight_decay=args.weight_decay)
 
@@ -225,18 +226,6 @@ def main():
     logger = TermLogger(n_epochs=args.epochs, train_size=min(len(train_loader), args.epoch_size), valid_size=len(val_loader))
     logger.epoch_bar.start()
 
-    # if args.pretrained_disp or args.evaluate:
-    #     logger.reset_valid_bar()
-    #     if args.with_gt and args.with_pose:
-    #         errors, error_names = validate_with_gt_pose(args, val_loader, disp_net, pose_exp_net, 0, logger, tb_writer)
-    #     elif args.with_gt:
-    #         errors, error_names = validate_with_gt(args, val_loader, disp_net, 0, logger, tb_writer)
-    #     else:
-    #         errors, error_names = validate_without_gt(args, val_loader, disp_net, pose_exp_net, 0, logger, tb_writer)
-    #     for error, name in zip(errors, error_names):
-    #         tb_writer.add_scalar(name, error, 0)
-    #     error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names[2:9], errors[2:9]))
-    #     logger.valid_writer.write(' * Avg {}'.format(error_string))
 
     for epoch in range(args.epochs):
         logger.epoch_bar.update(epoch)
@@ -246,29 +235,7 @@ def main():
         train_loss = train(args, train_loader, disp_net, pose_exp_net, optimizer, args.epoch_size, logger, tb_writer)
         logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
 
-        # evaluate on validation set
-        # logger.reset_valid_bar()
-        # if args.with_gt and args.with_pose:
-        #     errors, error_names = validate_with_gt_pose(args, val_loader, disp_net, pose_exp_net, epoch, logger, tb_writer)
-        # elif args.with_gt:
-        #     errors, error_names = validate_with_gt(args, val_loader, disp_net, epoch, logger, tb_writer)
-        # else:
-        #     errors, error_names = validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger, tb_writer)
-        # error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names, errors))
-        # logger.valid_writer.write(' * Avg {}'.format(error_string))
-
-        # for error, name in zip(errors, error_names):
-        #     tb_writer.add_scalar(name, error, epoch)
-
-        # Up to you to chose the most relevant error to measure your model's performance, careful some measures are to maximize (such as a1,a2,a3)
-        # decisive_error = errors[1]
-        # if best_error < 0:
-        #     best_error = decisive_error
-
-        # # remember lowest error and save checkpoint
         is_best = True
-        # is_best = decisive_error < best_error
-        # best_error = min(best_error, decisive_error)
         save_checkpoint(
             args.save_path, {
                 'epoch': epoch + 1,
@@ -297,6 +264,17 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
     disp_net.train()
     pose_exp_net.train()
 
+    print (disp_net.children())
+
+    # Freeze all dispnet layers except for last block!
+    cnt = 0
+    for child in disp_net.children():
+        for children in child.children():
+            cnt +=1
+            if cnt < 2:
+                for param in children.parameters():
+                    param.requires_grad = False
+
     end = time.time()
     logger.train_bar.update(0)
 
@@ -318,15 +296,30 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
                 depth = disp_net(tgt_img).unsqueeze(1)
                 depth = depth.float()
             else:
-                depth = disp_net(tgt_img).unsqueeze(1)
+                disparities = disp_net(tgt_img)
+                depth = [1/disp for disp in disparities]           
         else:
-            disparities = disp_net(tgt_img)
+            disparities = disp_net(tgt_img) # cnn
             depth = [1/disp for disp in disparities]
 
+
         explainability_mask, pose = pose_exp_net(tgt_img, ref_imgs)
-        if args.disp_transformer:
-            # cnn output is 4d list, just keep first elem for dpt
-            explainability_mask = explainability_mask[0]
+
+        # Convert Output pose to Transformation matrix
+        # poses = pose.detach().cpu()[0]
+        # poses = torch.cat([poses[:len(tgt_img)//2], torch.zeros(1,6).float(), poses[len(tgt_img)//2:]])
+        # inv_transform_matrices = pose_vec2mat(poses, rotation_mode=args.rotation_mode).numpy().astype(np.float64)
+
+        # rot_matrices = np.linalg.inv(inv_transform_matrices[:,:,:3])
+        # tr_vectors = -rot_matrices @ inv_transform_matrices[:,:,-1:]
+
+        # transform_matrices = np.concatenate([rot_matrices, tr_vectors], axis=-1)
+
+        # first_inv_transform = inv_transform_matrices[0]
+        # final_poses = first_inv_transform[:,:3] @ transform_matrices
+        # final_poses[:,:,-1:] += first_inv_transform[:,-1:]
+        # print ("pose shape: ", final_poses.shape, final_poses)
+      
 
         loss_1, warped, diff = photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
                                                                depth, explainability_mask, pose,
@@ -404,13 +397,14 @@ def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger,
         intrinsics_inv = intrinsics_inv.to(device)
 
         if args.disp_transformer:
-            depth = disp_net(tgt_img).unsqueeze(1)
-            disp = 1/depth
+            disp = disp_net(tgt_img)[0]
+            depth = 1/disp
         else:
             disp = disp_net(tgt_img)
             depth = 1/disp
 
         explainability_mask, pose = pose_exp_net(tgt_img, ref_imgs)
+        print ("pose: ", pose)
         # print ("depth shape: ", depth.shape, explainability_mask.shape)
         loss_1, warped, diff = photometric_reconstruction_loss(tgt_img, ref_imgs,
                                                                intrinsics, depth,

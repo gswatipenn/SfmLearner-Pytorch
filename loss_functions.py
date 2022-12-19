@@ -36,10 +36,11 @@ def photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
                 diff = diff * explainability_mask[:,i:i+1].expand_as(diff)
 
             reconstruction_loss += diff.abs().mean()
-            assert((reconstruction_loss == reconstruction_loss).item() == 1)
-
+            # assert((reconstruction_loss == reconstruction_loss).item() == 1)
             warped_imgs.append(ref_img_warped[0])
             diff_maps.append(diff[0])
+            if (not (reconstruction_loss == reconstruction_loss).item() == 1):
+                return torch.tensor(0.0), warped_imgs, diff_maps
 
         return reconstruction_loss, warped_imgs, diff_maps
 

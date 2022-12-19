@@ -27,6 +27,7 @@ class DPT(BaseModel):
     def __init__(
         self,
         head,
+        layerwise=False,
         features=256,
         backbone="vitb_rn50_384",
         readout="project",
@@ -38,6 +39,7 @@ class DPT(BaseModel):
         super(DPT, self).__init__()
 
         self.channels_last = channels_last
+        self.layerwise = layerwise
 
         hooks = {
             "vitb_rn50_384": [0, 1, 8, 11],
@@ -71,10 +73,10 @@ class DPT(BaseModel):
 
         layer_1, layer_2, layer_3, layer_4 = forward_vit(self.pretrained, x)
 
-        layer_1_rn = self.scratch.layer1_rn(layer_1)
+        layer_1_rn = self.scratch.layer1_rn(layer_1) # innermost layer
         layer_2_rn = self.scratch.layer2_rn(layer_2)
         layer_3_rn = self.scratch.layer3_rn(layer_3)
-        layer_4_rn = self.scratch.layer4_rn(layer_4)
+        layer_4_rn = self.scratch.layer4_rn(layer_4) # outermost layer
 
         path_4 = self.scratch.refinenet4(layer_4_rn)
         path_3 = self.scratch.refinenet3(path_4, layer_3_rn)
@@ -83,12 +85,17 @@ class DPT(BaseModel):
 
         out = self.scratch.output_conv(path_1)
 
-        return out
+        if self.layerwise:
+            # print ("DPT depth model modified outputs: ", path_1.shape, path_1.shape, path_1.shape, path_1.shape)
+            # print ("outs: ", layer_1_rn.shape, layer_2_rn.shape, layer_3_rn.shape, path_4.shape)
+            return path_1, path_2, path_3, path_4
+        else:
+            return out
 
 
 class DPTDepthModel(DPT):
     def __init__(
-        self, path=None, non_negative=True, scale=1.0, shift=0.0, invert=False, **kwargs
+        self, path=None, non_negative=True, scale=1.0, shift=0.0, invert=False, layerwise=False, **kwargs
     ):
         features = kwargs["features"] if "features" in kwargs else 256
 
@@ -106,14 +113,60 @@ class DPTDepthModel(DPT):
             nn.Identity(),
         )
 
-        super().__init__(head, **kwargs)
+        super().__init__(head, layerwise, **kwargs)
 
         if path is not None:
             self.load(path)
+        if layerwise: 
+            # self.interp1 = nn.Sequential(Interpolate(scale_factor=2, mode="bilinear", align_corners=True))
+            self.head1 = head
+            self.head2 = nn.Sequential(
+                nn.Conv2d(features, features // 2, kernel_size=3, stride=1, padding=1),
+                Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
+                nn.Conv2d(features // 2, 32, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(True),
+                nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0),
+                nn.ReLU(True) if non_negative else nn.Identity(),
+                nn.Identity(),
+            )
+            self.head3 = nn.Sequential(
+                nn.Conv2d(features, features // 2, kernel_size=3, stride=1, padding=1),
+                Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
+                nn.Conv2d(features // 2, 32, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(True),
+                nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0),
+                nn.ReLU(True) if non_negative else nn.Identity(),
+                nn.Identity(),
+            )
+            self.head4 = nn.Sequential(
+                nn.Conv2d(features, features // 2, kernel_size=3, stride=1, padding=1),
+                Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
+                nn.Conv2d(features // 2, 32, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(True),
+                nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0),
+                nn.ReLU(True) if non_negative else nn.Identity(),
+                nn.Identity(),
+            )
+            with torch.no_grad():
+                for l in range(len(self.head2)):
+                    if l not in [1, 3, 5, 6] :
+                        self.head2[l].weight.copy_(self.head1[l].weight)
+                        self.head3[l].weight.copy_(self.head1[l].weight)
+                        self.head4[l].weight.copy_(self.head1[l].weight)
 
     def forward(self, x):
-        inv_depth = super().forward(x).squeeze(dim=1)
-
+        # print ("layerwise set to: ", self.layerwise)
+        if self.layerwise:
+            inv_depth_paths = super().forward(x)
+            inv_depth_1 = self.head1(inv_depth_paths[0])
+            inv_depth_2 = self.head2(inv_depth_paths[1])
+            inv_depth_3 = self.head3(inv_depth_paths[2])
+            inv_depth_4 = self.head4(inv_depth_paths[3])
+            print ("DPT depth model modified outputs: ", inv_depth_1.shape, inv_depth_2.shape, inv_depth_3.shape, inv_depth_4.shape)
+            return inv_depth_1, inv_depth_2, inv_depth_3, inv_depth_4
+        else:
+            inv_depth = super().forward(x).squeeze(dim=1)
+        
         if self.invert:
             depth = self.scale * inv_depth + self.shift
             depth[depth < 1e-8] = 1e-8
