@@ -113,6 +113,8 @@ python3 train.py /path/to/the/formatted/data/ -b4 -m0 -s2.0 --epoch-size 1000 --
 |---------|--------|-------|-----------|
 |  0.359  | 4.067  | 8.887 | 0.425     | 
 
+![Results](results.png)
+
 ### Pose Results on MidAir
 
 3-frames snippets used
